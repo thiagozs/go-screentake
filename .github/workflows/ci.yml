@@ -24,7 +24,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential xorg-dev libgl1-mesa-dev libasound2-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev
+            build-essential xorg-dev libgl1-mesa-dev libasound2-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev xvfb
 
       - name: Cache Go modules
         uses: actions/cache@v4
@@ -42,5 +42,5 @@ jobs:
       - name: Build
         run: make build
 
-      - name: Test (headless)
-        run: make test
+      - name: Test (xvfb)
+        run: xvfb-run -a make test
