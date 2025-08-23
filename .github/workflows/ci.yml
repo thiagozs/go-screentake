@@ -8,6 +8,8 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    env:
+      EBITEN_HEADLESS: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,5 +42,5 @@ jobs:
       - name: Build
         run: make build
 
-      - name: Test
+      - name: Test (headless)
         run: make test

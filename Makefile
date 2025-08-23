@@ -79,7 +79,7 @@ install:
 
 .PHONY: test
 test:
-	$(GO) test $(GOFLAGS) ./...
+	EBITEN_HEADLESS=1 $(GO) test $(GOFLAGS) ./...
 
 .PHONY: tidy
 tidy:
