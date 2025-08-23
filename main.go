@@ -70,6 +70,13 @@ type App struct {
 	modeAll  bool
 }
 
+// Valores de versão embutidos via -ldflags (ver Makefile)
+var (
+	version = "dev"
+	commit  = ""
+	date    = ""
+)
+
 func main() {
 	n := screenshot.NumActiveDisplays()
 	if n <= 0 {
@@ -96,7 +103,18 @@ func main() {
 
 	w, h := raw.Bounds().Dx(), raw.Bounds().Dy()
 	ebiten.SetWindowSize(min(w, 1600), min(h, 900))
-	ebiten.SetWindowTitle("Snip - Seleção de área (1 monitor)")
+	title := "Snip - Seleção de área (1 monitor)"
+	if version != "" {
+		ver := version
+		if commit != "" {
+			ver = fmt.Sprintf("%s (%s)", version, commit)
+		}
+		if date != "" {
+			ver = fmt.Sprintf("%s - %s", ver, date)
+		}
+		title = fmt.Sprintf("%s | v%s", title, ver)
+	}
+	ebiten.SetWindowTitle(title)
 	ebiten.SetWindowResizable(true)
 	// ebiten.SetFullscreen(true)
 
