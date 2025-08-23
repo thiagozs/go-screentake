@@ -2,3 +2,4 @@
 .env
 bin/*
 !bin/.gitkeep
+dist/
