@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 jobs:
-  build-linux:
+  linux-amd64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,15 +21,34 @@ jobs:
             build-essential xorg-dev libgl1-mesa-dev libasound2-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev
       - name: Build linux amd64
         run: GOOS=linux GOARCH=amd64 make release-one VERSION=${GITHUB_REF_NAME#v}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: dist/*linux-amd64*
+
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install Linux deps (X11/OpenGL/ALSA)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential xorg-dev libgl1-mesa-dev libasound2-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev
       - name: Build linux arm64
         run: GOOS=linux GOARCH=arm64 make release-one VERSION=${GITHUB_REF_NAME#v}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: linux
-          path: dist/*linux*
+          name: linux-arm64
+          path: dist/*linux-arm64*
 
-  build-windows:
+  windows-amd64:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,26 +56,25 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Install make and 7zip
+        run: |
+          choco install make -y
+          choco install 7zip -y
+        shell: powershell
       - name: Build windows amd64
         run: |
-          setx GOOS windows
-          setx GOARCH amd64
-          make release-one VERSION=${env:GITHUB_REF_NAME.TrimStart('refs/tags/v')}
-        shell: pwsh
-      - name: Build windows arm64
-        run: |
-          setx GOOS windows
-          setx GOARCH arm64
+          $env:GOOS = 'windows'
+          $env:GOARCH = 'amd64'
           make release-one VERSION=${env:GITHUB_REF_NAME.TrimStart('refs/tags/v')}
         shell: pwsh
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows
-          path: dist/*windows*
+          name: windows-amd64
+          path: dist/*windows-amd64*
 
-  build-macos:
-    runs-on: macos-latest
+  macos-amd64:
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -65,16 +83,30 @@ jobs:
           cache: true
       - name: Build darwin amd64
         run: GOOS=darwin GOARCH=amd64 make release-one VERSION=${GITHUB_REF_NAME#v}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-amd64
+          path: dist/*darwin-amd64*
+
+  macos-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Build darwin arm64
         run: GOOS=darwin GOARCH=arm64 make release-one VERSION=${GITHUB_REF_NAME#v}
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: darwin
-          path: dist/*darwin*
+          name: macos-arm64
+          path: dist/*darwin-arm64*
 
   publish:
-    needs: [build-linux, build-windows, build-macos]
+    needs: [linux-amd64, linux-arm64, windows-amd64, macos-amd64, macos-arm64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
