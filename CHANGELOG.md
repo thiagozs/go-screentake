@@ -2,11 +2,20 @@
 
 Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 
+
 ## [Unreleased]
+
+- Em progresso
+
+## [0.2.0] - 2025-08-22
+
 
 - Ajustes iniciais de CI, Makefile e empacotamento
 
-## [0.1.0] - 2025-08-22
+# Changelog
+
+Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
+
 
 - Primeira versão com:
   - Captura de tela e seleção de área

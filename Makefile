@@ -205,36 +205,27 @@ changelog-release:
 	: $${VERSION:?Informe VERSION=x.y.z}; \
 	[ -f CHANGELOG.md ] || { echo "CHANGELOG.md não encontrado"; exit 1; }; \
 	grep -q '^## \[Unreleased\]' CHANGELOG.md || { echo "Seção [Unreleased] não encontrada"; exit 1; }; \
-	if grep -q "^## \[$${VERSION}\]" CHANGELOG.md; then \
-	  echo "Versão $$VERSION já existe no CHANGELOG."; \
-	  exit 0; \
-	fi; \
-	TMPDIR=$$(mktemp -d); \
-	trap 'rm -rf "$$TMPDIR"' EXIT INT TERM; \
-	# head: tudo antes do cabeçalho Unreleased (exclui o cabeçalho)
-	sed -n '1,/^## \[Unreleased\]/p' CHANGELOG.md | sed '$$d' > "$$TMPDIR/head.md"; \
-	# Se existir uma próxima seção após Unreleased, separe conteúdo e tail
+	if grep -q "^## \[$${VERSION}\]" CHANGELOG.md; then echo "Versão $$VERSION já existe no CHANGELOG."; exit 0; fi; \
+	tmpdir=$$(mktemp -d); \
+	head="$$tmpdir/head.md"; content="$$tmpdir/content.md"; tailf="$$tmpdir/tail.md"; \
+	sed -n '1,/^## \[Unreleased\]/p' CHANGELOG.md | sed '$$d' > "$$head"; \
 	if sed -n '/^## \[Unreleased\]/,/^## \[/p' CHANGELOG.md | grep -q '^## \['; then \
-	  sed -n '/^## \[Unreleased\]/,/^## \[/p' CHANGELOG.md | sed '1d;$$d' > "$$TMPDIR/content.md"; \
-	  sed -n '/^## \[Unreleased\]/,/^## \[/d; p' CHANGELOG.md > "$$TMPDIR/tail.md"; \
+	  sed -n '/^## \[Unreleased\]/,/^## \[/p' CHANGELOG.md | sed '1d;$$d' > "$$content"; \
+	  sed -n '/^## \[Unreleased\]/,/^## \[/d; p' CHANGELOG.md > "$$tailf"; \
 	else \
-	  sed -n '/^## \[Unreleased\]/,$$p' CHANGELOG.md | sed '1d' > "$$TMPDIR/content.md"; \
-	  : > "$$TMPDIR/tail.md"; \
+	  sed -n '/^## \[Unreleased\]/,$$p' CHANGELOG.md | sed '1d' > "$$content"; \
+	  : > "$$tailf"; \
 	fi; \
-	# Monta o novo CHANGELOG: Unreleased vazio + versão com conteúdo movido
 	{ \
-	  cat "$$TMPDIR/head.md"; \
-	  echo; \
-	  echo '## [Unreleased]'; \
-	  echo; \
-	  echo '- Em progresso'; \
-	  echo; \
-	  echo "## [$$VERSION] - $(DATE_SHORT)"; \
-	  echo; \
-	  cat "$$TMPDIR/content.md"; \
-	  cat "$$TMPDIR/tail.md"; \
+	  cat "$$head"; echo; \
+	  echo '## [Unreleased]'; echo; \
+	  echo '- Em progresso'; echo; \
+	  echo "## [$$VERSION] - $(DATE_SHORT)"; echo; \
+	  cat "$$content"; \
+	  cat "$$tailf"; \
 	} > CHANGELOG.md.new; \
 	mv CHANGELOG.md.new CHANGELOG.md; \
+	rm -rf "$$tmpdir"; \
 	echo "CHANGELOG atualizado para $$VERSION"
 
 # Cria tag git e publica (usa changelog-release e commit automático)
