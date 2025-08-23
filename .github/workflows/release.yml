@@ -56,15 +56,19 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Install make and 7zip
+      - name: Install build tools (make, 7zip, MinGW)
         run: |
           choco install make -y
           choco install 7zip -y
-        shell: powershell
+          choco install mingw -y
+          echo "C:\tools\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        shell: pwsh
       - name: Build windows amd64
         run: |
           $env:GOOS = 'windows'
           $env:GOARCH = 'amd64'
+          $env:CGO_ENABLED = '1'
+          $env:CC = 'gcc'
           make release-one VERSION=${env:GITHUB_REF_NAME.TrimStart('refs/tags/v')}
         shell: pwsh
       - name: Upload artifacts
