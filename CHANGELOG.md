@@ -4,11 +4,22 @@ Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 
 
 
+
 ## [Unreleased]
 
 - Em progresso
 
-## [0.2.1] - 2025-08-22
+## [0.2.2] - 2025-08-22
+
+
+- Em progresso
+
+# Changelog
+
+Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
+
+
+
 
 
 - Em progresso
