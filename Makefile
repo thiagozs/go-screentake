@@ -233,6 +233,12 @@ changelog-release:
 tag: verify-clean changelog-release
 	@set -e; \
 	: $${VERSION:?Informe VERSION=x.y.z}; \
+	# validação SemVer básica (x.y.z com opcionais -prerelease e +build)
+	case "x$${VERSION}" in \
+	  x*[!0-9A-Za-z.+-]*|x*..*|x.*.*.*) echo "VERSION inválida: $$VERSION" >&2; exit 1;; \
+	  x[0-9]*.[0-9]*.[0-9]*|-*) ;; \
+	  *) echo "Esperado formato x.y.z" >&2; exit 1;; \
+	esac; \
 	echo "$$VERSION" > VERSION; \
 	git add CHANGELOG.md || true; \
 	git add VERSION || true; \
