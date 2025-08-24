@@ -48,24 +48,32 @@ jobs:
     needs: validate-tag
     runs-on: ubuntu-24.04-arm64
     steps:
+      - name: Skip linux-arm64 (disabled)
+        if: ${{ vars.ENABLE_LINUX_ARM64 != 'true' }}
+        run: echo "linux-arm64 desabilitado (defina repo var ENABLE_LINUX_ARM64=true para ativar)"
       - uses: actions/checkout@v4
+        if: ${{ vars.ENABLE_LINUX_ARM64 == 'true' }}
       - uses: actions/setup-go@v5
+        if: ${{ vars.ENABLE_LINUX_ARM64 == 'true' }}
         with:
           go-version-file: go.mod
           cache: true
       - name: Install Linux deps (X11/OpenGL/ALSA)
+        if: ${{ vars.ENABLE_LINUX_ARM64 == 'true' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential xorg-dev libgl1-mesa-dev libasound2-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev
       - name: Build linux arm64
+        if: ${{ vars.ENABLE_LINUX_ARM64 == 'true' }}
         run: GOOS=linux GOARCH=arm64 make release-one VERSION=${GITHUB_REF_NAME#v}
       - name: Upload artifacts
+        if: ${{ vars.ENABLE_LINUX_ARM64 == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: linux-arm64
           path: dist/*linux-arm64*
-    timeout-minutes: 45
+    timeout-minutes: 20
     continue-on-error: true
 
   windows-amd64:
@@ -157,7 +165,11 @@ jobs:
       - name: Generate checksums
         run: |
           cd release
-          sha256sum * > SHA256SUMS.txt
+          if ls -1 | grep -q .; then
+            sha256sum * > SHA256SUMS.txt
+          else
+            echo "Sem arquivos para gerar checksums" > SHA256SUMS.txt
+          fi
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
