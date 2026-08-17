@@ -25,15 +25,11 @@ type Button struct {
 }
 
 func (b Button) Draw(screen *ebiten.Image, hovered bool) {
-	bg := ebiten.NewImage(b.Rect.Dx(), b.Rect.Dy())
+	bgColor := color.NRGBA{R: 40, G: 40, B: 40, A: 220}
 	if hovered {
-		bg.Fill(color.NRGBA{R: 60, G: 60, B: 60, A: 255})
-	} else {
-		bg.Fill(color.NRGBA{R: 40, G: 40, B: 40, A: 220})
+		bgColor = color.NRGBA{R: 60, G: 60, B: 60, A: 255}
 	}
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(b.Rect.Min.X), float64(b.Rect.Min.Y))
-	screen.DrawImage(bg, op)
+	ebitenutil.DrawRect(screen, float64(b.Rect.Min.X), float64(b.Rect.Min.Y), float64(b.Rect.Dx()), float64(b.Rect.Dy()), bgColor)
 
 	// borda
 	drawRectBorder(screen, b.Rect.Min.X, b.Rect.Min.Y, b.Rect.Max.X, b.Rect.Max.Y)
@@ -47,8 +43,11 @@ func (b Button) Contains(x, y int) bool {
 }
 
 type App struct {
-	bg    *ebiten.Image
-	rawBG *image.RGBA
+	bg             *ebiten.Image
+	rawBG          *image.RGBA
+	overlay        *ebiten.Image
+	captureCh      chan *image.RGBA
+	captureStarted bool
 
 	// seleção
 	selecting      bool // mouse arrastando
@@ -57,6 +56,14 @@ type App struct {
 	selX1, selY1   int
 	startX, startY int
 	curX, curY     int
+	adjusting      bool
+	adjustHandle   int
+	adjustStartX   int
+	adjustStartY   int
+	origSelX0      int
+	origSelY0      int
+	origSelX1      int
+	origSelY1      int
 
 	// UI/estado
 	saveBtn     Button
@@ -88,7 +95,8 @@ func main() {
 		displays = append(displays, screenshot.GetDisplayBounds(i))
 	}
 
-	raw := captureDisplay(0)
+	bounds := displays[0]
+	raw := image.NewRGBA(image.Rect(0, 0, bounds.Dx(), bounds.Dy()))
 	bg := ebiten.NewImageFromImage(raw)
 
 	app := &App{
@@ -98,6 +106,7 @@ func main() {
 		displays:    displays,
 		curDisp:     0,
 		modeAll:     false,
+		captureCh:   make(chan *image.RGBA, 1),
 	}
 	app.layoutButtons(raw.Bounds().Dx(), raw.Bounds().Dy())
 
@@ -115,7 +124,7 @@ func main() {
 		title = fmt.Sprintf("%s | v%s", title, ver)
 	}
 	ebiten.SetWindowTitle(title)
-	ebiten.SetWindowResizable(true)
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	// ebiten.SetFullscreen(true)
 
 	if err := ebiten.RunGame(app); err != nil {
@@ -124,6 +133,24 @@ func main() {
 }
 
 func (a *App) Update() error {
+	if !a.captureStarted {
+		a.captureStarted = true
+		a.infoMessage = "Capturando tela..."
+		go func() {
+			a.captureCh <- captureDisplay(0)
+		}()
+	}
+	select {
+	case raw := <-a.captureCh:
+		if raw != nil {
+			a.rawBG = raw
+			a.bg = ebiten.NewImageFromImage(raw)
+			a.layoutButtons(raw.Bounds().Dx(), raw.Bounds().Dy())
+			a.infoMessage = "Arraste para selecionar. Solte para ver opções. Enter=Salvar | Esc=Cancelar | Q/E trocar monitor | A 'todos'"
+		}
+	default:
+	}
+
 	// Sair/cancelar com Esc
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		if a.hasSelection || a.selecting {
@@ -168,15 +195,23 @@ func (a *App) Update() error {
 	// Mouse
 	mx, my := ebiten.CursorPosition()
 
-	// Início do arrasto
+	// Início e atualização do arrasto
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-		if !a.selecting && !a.hasSelection {
+		if a.hasSelection && !a.adjusting && !a.saveBtn.Contains(mx, my) && !a.cancelBtn.Contains(mx, my) {
+			a.adjusting = true
+			a.adjustHandle = a.selectionHandle(mx, my)
+			a.adjustStartX, a.adjustStartY = mx, my
+			a.origSelX0, a.origSelY0 = a.selX0, a.selY0
+			a.origSelX1, a.origSelY1 = a.selX1, a.selY1
+		} else if a.selecting {
+			a.curX, a.curY = mx, my
+		} else if !a.hasSelection {
 			a.selecting = true
 			a.startX, a.startY = mx, my
 			a.curX, a.curY = mx, my
 			a.savedPath = ""
-		} else if a.selecting {
-			a.curX, a.curY = mx, my
+		} else if a.adjusting {
+			a.updateAdjustment(mx, my)
 		}
 	} else {
 		// final do arrasto -> trava seleção (não salva)
@@ -190,6 +225,15 @@ func (a *App) Update() error {
 			} else {
 				a.infoMessage = "Seleção pequena. Tente novamente."
 				a.clearSelection()
+			}
+		}
+		if a.adjusting {
+			a.adjusting = false
+			if a.selX1-a.selX0 >= 2 && a.selY1-a.selY0 >= 2 {
+				a.infoMessage = "Seleção ajustada. Use Salvar/Enter ou ajuste novamente."
+			} else {
+				a.clearSelection()
+				a.infoMessage = "Seleção pequena. Tente novamente."
 			}
 		}
 	}
@@ -215,13 +259,13 @@ func (a *App) Draw(screen *ebiten.Image) {
 	// durante o arrasto: desenha overlay e borda da seleção
 	if a.selecting {
 		x0, y0, x1, y1 := normRect(a.startX, a.startY, a.curX, a.curY)
-		drawOverlayWithHole(screen, a.bg, x0, y0, x1, y1)
+		a.drawOverlayWithHole(screen, x0, y0, x1, y1)
 		drawRectBorder(screen, x0, y0, x1, y1)
 	}
 
 	// após finalizar seleção (travada), desenha overlay/borda e os botões
 	if a.hasSelection {
-		drawOverlayWithHole(screen, a.bg, a.selX0, a.selY0, a.selX1, a.selY1)
+		a.drawOverlayWithHole(screen, a.selX0, a.selY0, a.selX1, a.selY1)
 		drawRectBorder(screen, a.selX0, a.selY0, a.selX1, a.selY1)
 
 		mx, my := ebiten.CursorPosition()
@@ -282,15 +326,90 @@ func drawRectBorder(dst *ebiten.Image, x0, y0, x1, y1 int) {
 	dst.DrawImage(line, op)
 }
 
-func drawOverlayWithHole(screen, bg *ebiten.Image, x0, y0, x1, y1 int) {
-	overlay := ebiten.NewImage(screen.Bounds().Dx(), screen.Bounds().Dy())
-	overlay.Fill(color.NRGBA{R: 0, G: 0, B: 0, A: 100})
-	screen.DrawImage(overlay, &ebiten.DrawImageOptions{})
+func (a *App) drawOverlayWithHole(screen *ebiten.Image, x0, y0, x1, y1 int) {
+	if a.overlay == nil || a.overlay.Bounds().Dx() != screen.Bounds().Dx() || a.overlay.Bounds().Dy() != screen.Bounds().Dy() {
+		a.overlay = ebiten.NewImage(screen.Bounds().Dx(), screen.Bounds().Dy())
+	}
+	a.overlay.Fill(color.NRGBA{R: 0, G: 0, B: 0, A: 100})
+	screen.DrawImage(a.overlay, &ebiten.DrawImageOptions{})
 
-	sub := bg.SubImage(image.Rect(x0, y0, x1, y1)).(*ebiten.Image)
+	sub := a.bg.SubImage(image.Rect(x0, y0, x1, y1)).(*ebiten.Image)
 	op2 := &ebiten.DrawImageOptions{}
 	op2.GeoM.Translate(float64(x0), float64(y0))
 	screen.DrawImage(sub, op2)
+}
+
+func (a *App) selectionHandle(x, y int) int {
+	const tolerance = 10
+	nearX0 := abs(x-a.selX0) <= tolerance
+	nearX1 := abs(x-a.selX1) <= tolerance
+	nearY0 := abs(y-a.selY0) <= tolerance
+	nearY1 := abs(y-a.selY1) <= tolerance
+
+	switch {
+	case nearX0 && nearY0:
+		return 1 // canto superior esquerdo
+	case nearX0 && nearY1:
+		return 2 // canto inferior esquerdo
+	case nearX1 && nearY0:
+		return 3 // canto superior direito
+	case nearX1 && nearY1:
+		return 4 // canto inferior direito
+	case nearY0 && x >= a.selX0 && x <= a.selX1:
+		return 5 // borda superior
+	case nearY1 && x >= a.selX0 && x <= a.selX1:
+		return 6 // borda inferior
+	case nearX0 && y >= a.selY0 && y <= a.selY1:
+		return 7 // borda esquerda
+	case nearX1 && y >= a.selY0 && y <= a.selY1:
+		return 8 // borda direita
+	case image.Pt(x, y).In(image.Rect(a.selX0, a.selY0, a.selX1, a.selY1)):
+		return 9 // mover seleção
+	default:
+		return 0
+	}
+}
+
+func (a *App) updateAdjustment(x, y int) {
+	dx := x - a.adjustStartX
+	dy := y - a.adjustStartY
+	x0, y0, x1, y1 := a.origSelX0, a.origSelY0, a.origSelX1, a.origSelY1
+
+	switch a.adjustHandle {
+	case 1:
+		x0 += dx
+		y0 += dy
+	case 2:
+		x0 += dx
+		y1 += dy
+	case 3:
+		x1 += dx
+		y0 += dy
+	case 4:
+		x1 += dx
+		y1 += dy
+	case 5:
+		y0 += dy
+	case 6:
+		y1 += dy
+	case 7:
+		x0 += dx
+	case 8:
+		x1 += dx
+	case 9:
+		x0 += dx
+		x1 += dx
+		y0 += dy
+		y1 += dy
+	}
+	a.selX0, a.selY0, a.selX1, a.selY1 = normRect(x0, y0, x1, y1)
+}
+
+func abs(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 // ---- captura / UI / salvar ----
@@ -409,6 +528,8 @@ func (a *App) doSave() {
 func (a *App) clearSelection() {
 	a.selecting = false
 	a.hasSelection = false
+	a.adjusting = false
+	a.adjustHandle = 0
 	a.startX, a.startY = 0, 0
 	a.curX, a.curY = 0, 0
 	a.selX0, a.selY0, a.selX1, a.selY1 = 0, 0, 0, 0
